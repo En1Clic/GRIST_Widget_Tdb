@@ -38,6 +38,13 @@ const axisCommon = () => ({
   axisLabel: { color: css('--text-2') || '#555' },
   splitLine: { lineStyle: { color: css('--grid') || '#eee' } },
 });
+// Légende sur une ligne en bas, paginée (◀ 1/9 ▶) quand elle déborde.
+const legendBottom = () => ({
+  type: 'scroll', orient: 'horizontal', bottom: 0, left: 8, right: 8, itemWidth: 12, itemHeight: 12, itemGap: 14,
+  icon: 'roundRect', pageButtonPosition: 'end', pageFormatter: '{current}/{total}', pageIconSize: 11,
+  pageIconColor: css('--text') || '#333', pageIconInactiveColor: css('--grid') || '#ccc', pageTextStyle: { color: css('--text-2') },
+  textStyle: { color: css('--text') || '#333', fontSize: 12, width: 190, overflow: 'truncate' }, tooltip: { show: true },
+});
 const trunc = (s, n = 28) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
 /** Barres horizontales triées, une couleur par catégorie. */
@@ -59,8 +66,8 @@ export function barH(cats, values, colors, { money = false, selected = null } = 
 export function stacked(cats, series, data, colors, { money = false, rotate = 0 } = {}) {
   return {
     ...base(),
-    grid: { ...base().grid, top: 36 },
-    legend: { type: 'scroll', top: 0, textStyle: { color: css('--text-2') } },
+    grid: { ...base().grid, top: 16, bottom: 34 },
+    legend: legendBottom(),
     tooltip: { ...base().tooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: money ? fmtEuro : fmtInt },
     xAxis: { type: 'category', data: cats, ...axisCommon(), axisLabel: { ...axisCommon().axisLabel, rotate, formatter: (s) => trunc(s, 18), hideOverlap: true } },
     yAxis: { type: 'value', minInterval: money ? 0 : 1, ...axisCommon(), axisLabel: { ...axisCommon().axisLabel, formatter: money ? fmtEuro : fmtInt } },
@@ -73,11 +80,13 @@ export function doughnut(cats, values, colors, { selected = null } = {}) {
   return {
     ...base(),
     tooltip: { ...base().tooltip, trigger: 'item', formatter: (p) => `${p.name}<br><b>${fmtInt(p.value)}</b> (${p.percent} %)` },
-    legend: { type: 'scroll', bottom: 0, left: 'center', itemWidth: 12, itemHeight: 10, pageTextStyle: { color: css('--text-2') },
-      textStyle: { color: css('--text-2'), width: 120, overflow: 'truncate' }, tooltip: { show: true } },
+    legend: legendBottom(),
     series: [{
-      type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'], avoidLabelOverlap: true,
-      label: { show: false }, itemStyle: { borderColor: css('--surface') || '#fff', borderWidth: 2 },
+      type: 'pie', radius: ['40%', '62%'], center: ['50%', '45%'], avoidLabelOverlap: true, minShowLabelAngle: 4,
+      label: { show: true, position: 'outside', color: css('--text') || '#333', fontSize: 11, formatter: (p) => trunc(p.name, 18) },
+      labelLine: { show: true, length: 8, length2: 10, smooth: true, lineStyle: { color: css('--text-2') || '#999' } },
+      labelLayout: { hideOverlap: true },
+      itemStyle: { borderColor: css('--surface-solid') || '#fff', borderWidth: 2, borderRadius: 3 },
       data: cats.map((c, i) => ({ name: c, value: values[i], itemStyle: { color: colors[i], opacity: selected && selected.size && !selected.has(c) ? 0.3 : 1 } })),
     }],
   };

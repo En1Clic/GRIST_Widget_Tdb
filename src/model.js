@@ -155,4 +155,40 @@ export function monthRange(sorted) {
   return [...out, ...rest];
 }
 
+/**
+ * Tendance d'un indicateur le long d'une colonne de dates :
+ *  - delta : variation (%) entre la seconde moitié des lignes (ordonnées par date) et la première,
+ *            même méthode qu'Advanced Charts (« vs période précédente ») ;
+ *  - spark : valeur de l'indicateur mois par mois (mois vides comblés).
+ * agg(sousEnsembleDeLignes) -> nombre.
+ */
+export function trend(rows, dateCol, agg) {
+  if (!dateCol) return { delta: null, spark: [] };
+  const dated = rows.filter((r) => r[dateCol]).sort((a, b) => String(a[dateCol]).localeCompare(String(b[dateCol])));
+  let delta = null;
+  if (dated.length > 3) {
+    const mid = Math.floor(dated.length / 2);
+    const prev = agg(dated.slice(0, mid)), curr = agg(dated.slice(mid));
+    if (prev) delta = Math.round(((curr - prev) / Math.abs(prev)) * 10000) / 100;
+  }
+  const byMonth = new Map();
+  for (const r of dated) { const k = month(r[dateCol]); if (!byMonth.has(k)) byMonth.set(k, []); byMonth.get(k).push(r); }
+  const months = monthRange([...byMonth.keys()].sort());
+  const spark = months.map((k) => (byMonth.has(k) ? agg(byMonth.get(k)) || 0 : 0));
+  return { delta, spark };
+}
+
+/** Agrégats réutilisables par les cartes. */
+export const AGG = {
+  count: () => (rs) => rs.length,
+  countd: (col) => (rs) => new Set(rs.flatMap((r) => valuesOf(r, col)).filter((v) => v !== EMPTY)).size,
+  sum: (col) => (rs) => rs.reduce((s, r) => s + (Number(r[col]) || 0), 0),
+  avg: (col) => (rs) => (rs.length ? rs.reduce((s, r) => s + (Number(r[col]) || 0), 0) / rs.length : 0),
+  nonEmpty: (col) => (rs) => rs.filter((r) => r[col]).length,
+  avgDays: (d0, d1) => (rs) => {
+    const ds = rs.map((r) => durationDays(r[d0], d1 ? r[d1] : null)).filter((x) => x != null && x > 0);
+    return ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : 0;
+  },
+};
+
 export { EMPTY };

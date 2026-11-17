@@ -24,6 +24,7 @@ const state = {
   palette: 'douce',    // 'douce' (bleus/verts) | 'referentiel' (couleurs du document)
   gantt: { groupBy: null, zoom: 'tout', collapsed: new Set() },
   tables: { sorts: {}, matrix: { measure: 'n' } },
+  chartKinds: {},      // représentation choisie par graphique (anneau / barres)
   filtersOpen: true,   // barre de filtres dépliée (sinon : une ligne des filtres actifs)
   shownFilters: ['annee', 'categorie', 'entite', 'axe1'],   // filtres proposés en haut (réglable)
   scroll: {},          // position de défilement par onglet
@@ -180,13 +181,51 @@ const menuQuery = {};
 document.addEventListener('click', () => { if (openMenu) { openMenu = null; document.querySelectorAll('.pop').forEach((p) => { p.hidden = true; }); } });
 
 // ---------- blocs ----------
-function kpiCard(label, value, sub) {
-  return h('div', { class: 'kpi' }, h('div', { class: 'kpiv' }, value), h('div', { class: 'kpil' }, label), sub ? h('div', { class: 'kpisub' }, sub) : '');
+// Icônes des cartes (SVG constants, aucune ressource externe).
+const ICONS = {
+  layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
+  coins: '<ellipse cx="9" cy="7" rx="6" ry="3"/><path d="M3 7v5c0 1.7 2.7 3 6 3s6-1.3 6-3V7"/><path d="M9 15v2c0 1.7 2.7 3 6 3s6-1.3 6-3v-5c0-1.7-2.7-3-6-3"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+  trend: '<path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  donut: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
+  bars: '<path d="M4 6h10M4 12h16M4 18h7"/>',
+};
+function svgIcon(name, cls = 'ico') {
+  const s = h('span', { class: cls, 'aria-hidden': 'true' });
+  s.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
+  return s;
+}
+function sparkline(data) {
+  if (!data || data.length < 2) return '';
+  const w = 200, ht = 36, max = Math.max(...data, 0), min = Math.min(...data, 0), span = max - min || 1;
+  const pts = data.map((v, i) => [(i / (data.length - 1)) * w, ht - 3 - ((v - min) / span) * (ht - 6)]);
+  const line = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const s = h('div', { class: 'kspark', 'aria-hidden': 'true' });
+  s.innerHTML = `<svg viewBox="0 0 ${w} ${ht}" preserveAspectRatio="none"><path class="kspark-a" d="${line} L${w},${ht} L0,${ht} Z"/><path class="kspark-l" d="${line}" vector-effect="non-scaling-stroke"/></svg>`;
+  return s;
 }
 
-function chartCard(id, title, span, option, onClick, hint) {
+/** Carte indicateur : libellé, valeur, icône, variation vs période précédente, courbe mensuelle. */
+function kpiCard(label, value, { icon = 'layout', rows = null, agg = null, sub = null } = {}) {
+  const t = rows && agg ? M.trend(rows, state.mapping.dateDebut, agg) : { delta: null, spark: [] };
+  const up = t.delta != null && t.delta >= 0;
+  return h('div', { class: 'kpi' },
+    h('div', { class: 'khead' }, h('div', { class: 'kpil' }, label), svgIcon(icon, 'kico')),
+    h('div', { class: 'kpiv' }, value),
+    t.delta != null ? h('div', { class: 'kdelta ' + (up ? 'up' : 'down') }, (up ? '↑ +' : '↓ ') + t.delta.toLocaleString('fr-FR') + ' %',
+      h('span', {}, ' vs période précédente')) : sub ? h('div', { class: 'kpisub' }, sub) : h('div', { class: 'kpisub' }, '\u00a0'),
+    sparkline(t.spark));
+}
+
+function chartCard(id, title, span, option, onClick, hint, { subtitle = null, chip = null } = {}) {
   const el = h('div', { class: 'chart' });
-  const card = h('section', { class: `card span${span}` }, h('h3', {}, title, hint ? h('span', { class: 'hint' }, hint) : ''), el);
+  const card = h('section', { class: `card span${span}` },
+    h('div', { class: 'chead' },
+      h('div', {}, h('h3', {}, title), subtitle ? h('div', { class: 'csub' }, subtitle) : (hint ? h('div', { class: 'csub' }, hint) : '')),
+      chip || ''),
+    el);
   queueMicrotask(() => {
     const inst = echarts.init(el, null, { renderer: 'canvas' });
     inst.setOption(option);
@@ -201,6 +240,7 @@ function chartCard(id, title, span, option, onClick, hint) {
 // estompe les valeurs non retenues — le même principe que les filtres croisés d'un tableau de bord.
 function dimChart(id, title, span, dimKey, { measure = null, kind = 'bar', limit = 0, sortByValue = true } = {}) {
   if (!dimKey) return null;
+  kind = state.chartKinds[id] || kind;
   const rows = M.applyFilters(state.data.rows, state.filters, state.mapping, dimKey);
   const meta = state.data.meta[dimKey];
   const g = M.groupBy(rows, dimKey, measure);
@@ -212,7 +252,11 @@ function dimChart(id, title, span, dimKey, { measure = null, kind = 'bar', limit
   const selected = state.filters[dimKey];
   const opt = kind === 'doughnut' ? C.doughnut(cats, values, colors, { selected })
     : C.barH(cats, values, colors, { money: !!measure, selected });
-  return chartCard(id, title, span, opt, (p) => toggleFilter(dimKey, p.name), 'cliquer pour filtrer');
+  const subtitle = `${measure ? 'Somme de ' + colLabel(measure).toLowerCase() : 'Nombre d\'actions'} par ${colLabel(dimKey).toLowerCase()} · cliquer pour filtrer`;
+  const chip = h('button', { class: 'cchip', title: 'Changer de représentation',
+    onclick: () => { state.chartKinds[id] = kind === 'doughnut' ? 'bar' : 'doughnut'; render(); } },
+  svgIcon(kind === 'doughnut' ? 'donut' : 'bars', 'cico'), kind === 'doughnut' ? 'Anneau' : 'Barres');
+  return chartCard(id, title, span, opt, (p) => toggleFilter(dimKey, p.name), null, { subtitle, chip });
 }
 
 function stackChart(id, title, span, rowKeyFn, rowDim, seriesCol, { chrono = false, rotate = 0 } = {}) {
@@ -228,7 +272,8 @@ function stackChart(id, title, span, rowKeyFn, rowDim, seriesCol, { chrono = fal
   const colors = ser.map((s) => colorOf(seriesCol, s));
   const opt = C.stacked(chrono ? cats.map(fmtMonth) : cats, ser, data, colors, { rotate });
   const click = rowDim ? (p) => toggleFilter(rowDim, cats[p.dataIndex]) : null;
-  return chartCard(id, title, span, opt, click, rowDim ? 'cliquer pour filtrer' : null);
+  return chartCard(id, title, span, opt, click, null,
+    { subtitle: `Nombre d'actions par ${colLabel(seriesCol).toLowerCase()}${rowDim ? ' · cliquer pour filtrer' : ''}` });
 }
 const sum = (m) => [...(m?.values() || [])].reduce((a, b) => a + b, 0);
 
@@ -239,10 +284,10 @@ function tabEnsemble() {
   const k = M.kpis(rows, m);
   return [
     h('div', { class: 'kpis' },
-      kpiCard('Actions', C.fmtInt(k.actions)),
-      m.entite ? kpiCard(colLabel(m.entite).replace(/([^sx])$/, '$1s'), C.fmtInt(k.entites), 'avec au moins une action') : '',
-      m.montant ? kpiCard('Budget total', C.fmtEuro(k.budget)) : '',
-      m.manquants ? kpiCard('Actions à compléter', C.fmtInt(k.aCompleter), k.actions ? `${Math.round(100 * k.aCompleter / k.actions)} % des actions` : '') : ''),
+      kpiCard('Actions', C.fmtInt(k.actions), { icon: 'layout', rows, agg: M.AGG.count() }),
+      m.entite ? kpiCard(`${colLabel(m.entite).replace(/([^sx])$/, '$1s')} ${/(ité|ion|ure|ance|ence|ie|ée|e)$/i.test(colLabel(m.entite)) && !/(re|me|ge)$/i.test(colLabel(m.entite)) ? 'actives' : 'actifs'}`, C.fmtInt(k.entites), { icon: 'users', rows, agg: M.AGG.countd(m.entite) }) : '',
+      m.montant ? kpiCard('Budget total', C.fmtEuro(k.budget), { icon: 'coins', rows, agg: M.AGG.sum(m.montant) }) : '',
+      m.manquants ? kpiCard('Actions à compléter', C.fmtInt(k.aCompleter), { icon: 'target', rows, agg: M.AGG.nonEmpty(m.manquants), sub: k.actions ? `${Math.round(100 * k.aCompleter / k.actions)} % des actions` : null }) : ''),
     h('div', { class: 'grid' },
       dimChart('e-typo', `Actions par ${colLabel(m.categorie).toLowerCase()}`, 6, m.categorie),
       m.montant ? dimChart('e-typo-budget', `Budget par ${colLabel(m.categorie).toLowerCase()}`, 6, m.categorie, { measure: m.montant }) : null,
@@ -261,10 +306,10 @@ function tabEntite() {
   const k = M.kpis(rows, m);
   return [
     h('div', { class: 'kpis' },
-      kpiCard('Actions', C.fmtInt(k.actions)),
-      m.montant ? kpiCard('Budget', C.fmtEuro(k.budget)) : '',
-      m.montant ? kpiCard('Budget moyen par action', C.fmtEuro(k.budgetMoyen)) : '',
-      m.dateDebut ? kpiCard('Durée moyenne', k.dureeMoyenne == null ? '—' : `${Math.round(k.dureeMoyenne)} j`) : ''),
+      kpiCard('Actions', C.fmtInt(k.actions), { icon: 'layout', rows, agg: M.AGG.count() }),
+      m.montant ? kpiCard('Budget', C.fmtEuro(k.budget), { icon: 'coins', rows, agg: M.AGG.sum(m.montant) }) : '',
+      m.montant ? kpiCard('Budget moyen par action', C.fmtEuro(k.budgetMoyen), { icon: 'trend', rows, agg: M.AGG.avg(m.montant) }) : '',
+      m.dateDebut ? kpiCard('Durée moyenne', k.dureeMoyenne == null ? '—' : `${Math.round(k.dureeMoyenne)} j`, { icon: 'clock', rows, agg: M.AGG.avgDays(m.dateDebut, m.dateFin) }) : ''),
     h('div', { class: 'grid' },
       dimChart('t-etab', `Actions par ${colLabel(m.entite).toLowerCase()}`, 6, m.entite),
       m.montant ? dimChart('t-etab-budget', `Budget par ${colLabel(m.entite).toLowerCase()}`, 6, m.entite, { measure: m.montant }) : null,
