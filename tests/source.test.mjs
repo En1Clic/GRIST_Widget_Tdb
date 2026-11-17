@@ -47,9 +47,12 @@ globalThis.window = {
   },
 };
 
-const bridge = await import('../src/grist-bridge.js');
-const { loadGrist } = await import('../src/source.js');
-const M = await import('../src/model.js');
+// Même suffixe de version que celui posé par outils/versionner.py, pour partager les modules.
+const { readFileSync } = await import('node:fs');
+const V = (readFileSync(new URL('../src/source.js', import.meta.url), 'utf8').match(/grist-bridge\.js(\?v=[\w.-]+)?'/) || [])[1] || '';
+const bridge = await import('../src/grist-bridge.js' + V);
+const { loadGrist } = await import('../src/source.js' + V);
+const M = await import('../src/model.js' + V);
 
 assert.equal(await bridge.connect(500), true, 'poignée de main');
 assert.equal(bridge.accessLevel(), 'full');

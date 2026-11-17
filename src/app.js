@@ -1,13 +1,13 @@
 // Écran du widget : en-tête, filtres, quatre onglets (Vue d'ensemble, Par entité, Planning, Tableaux),
 // réglages.
 
-import * as bridge from './grist-bridge.js';
-import { loadGrist, loadDemo } from './source.js';
-import * as M from './model.js';
-import * as C from './charts.js';
-import { renderGantt } from './gantt.js';
-import { renderTables } from './tables.js';
-import { $, h, debounce, fmtMonth, fmtDate } from './dom.js';
+import * as bridge from './grist-bridge.js?v=20261117-1602';
+import { loadGrist, loadDemo } from './source.js?v=20261117-1602';
+import * as M from './model.js?v=20261117-1602';
+import * as C from './charts.js?v=20261117-1602';
+import { renderGantt } from './gantt.js?v=20261117-1602';
+import { renderTables } from './tables.js?v=20261117-1602';
+import { $, h, debounce, fmtMonth, fmtDate } from './dom.js?v=20261117-1602';
 
 const OPTION_KEY = 'kpiConfig';
 const echarts = window.echarts;
