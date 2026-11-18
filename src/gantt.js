@@ -2,9 +2,9 @@
 // Une ligne par action, de la date de début à la date de fin (effective), regroupées et repliables.
 // Respecte tous les filtres de la page ; lecture seule.
 
-import { h, monthName, fmtDate } from './dom.js?v=20261117-1602';
-import { fmtEuro } from './charts.js?v=20261117-1602';
-import { valuesOf, EMPTY } from './model.js?v=20261117-1602';
+import { h, monthName, fmtDate } from './dom.js?v=20261118-1029';
+import { fmtEuro } from './charts.js?v=20261118-1029';
+import { valuesOf, EMPTY } from './model.js?v=20261118-1029';
 
 const DAY = 86400000;
 const LEFT = 300;                       // largeur de la colonne des intitulés (px)

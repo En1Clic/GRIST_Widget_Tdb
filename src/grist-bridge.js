@@ -11,8 +11,8 @@
 //   - la conversion des dates Grist (secondes epoch) en 'AAAA-MM-JJ', fuseau compris ;
 //   - les options persistées du widget (getOption / setOption).
 // Ce qui est retiré : éditeur, tableaux de bord multiples, table de configuration, écriture
-// de lignes, pièces jointes, widgets imbriqués, impression. Ce widget N'ÉCRIT JAMAIS dans
-// les tables du document : seule son option de configuration est enregistrée.
+// de lignes, pièces jointes, widgets imbriqués, impression. Le tableau de bord n'écrit jamais
+// dans les tables ; seul le widget de saisie (saisie/) utilise addRecord / updateRecord.
 
 const g = () => (typeof window !== 'undefined' ? window.grist : undefined);
 const apiPresent = () => { try { return !!g() && typeof g().ready === 'function'; } catch { return false; } };
@@ -97,11 +97,13 @@ export async function getColumns(tableId) {
     const vis = mc.visibleCol?.[i];
     cols.push({
       id, label: mc.label[i] || id, type, widgetOptions,
+      isFormula: !!(mc.isFormula?.[i] && mc.formula?.[i]),
+      pos: mc.parentPos?.[i] ?? i,
       refTable: ref ? ref[2] : null,
       refVisibleCol: ref && vis ? (cRowToColId[vis] || null) : null,
     });
   }
-  return cols;
+  return cols.sort((x, y) => x.pos - y.pos);
 }
 
 /** Lignes brutes d'une table, en objets {id, COL: valeur}. */
@@ -146,4 +148,15 @@ export async function getOption(key) {
 export async function setOption(key, value) {
   if (!connected) return false;
   try { await g().setOption(key, value); return true; } catch { return false; }
+}
+
+// ---- Écriture (widget de saisie uniquement) ----
+// Passe par la session de l'utilisateur : les règles d'accès du document s'appliquent aux
+// écritures comme aux lectures (une création hors de son périmètre est refusée par Grist).
+export async function addRecord(tableId, fields) {
+  const r = await g().docApi.applyUserActions([['AddRecord', tableId, null, fields]]);
+  return r?.retValues?.[0] ?? null;
+}
+export async function updateRecord(tableId, rowId, fields) {
+  await g().docApi.applyUserActions([['UpdateRecord', tableId, rowId, fields]]);
 }

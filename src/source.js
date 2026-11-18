@@ -9,7 +9,7 @@
 //   meta: { COL: { colors: {libellé: '#hex'}, order: {libellé: rang} } }
 // }
 
-import * as bridge from './grist-bridge.js?v=20261117-1602';
+import * as bridge from './grist-bridge.js?v=20261118-1029';
 
 const HEX = /^#[0-9a-f]{3}([0-9a-f]{3})?$/i;
 const COLOR_COL = /^(couleur|color|colour)$/i;
@@ -93,7 +93,7 @@ export async function loadGrist(tableId) {
 }
 
 export async function loadDemo() {
-  const res = await fetch('demo/actions-demo.json?v=20261117-1602');
+  const res = await fetch('demo/actions-demo.json?v=20261118-1029');
   const data = await res.json();
   return { live: false, tables: [data.table], ...data };
 }
