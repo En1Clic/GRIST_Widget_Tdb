@@ -4,9 +4,9 @@
 //   - Par entité, par thème           (nombre, montant, part)
 //   - Détail mensuel par catégorie    (carte de chaleur nombre / montant)
 
-import { h, fmtDate, fmtMonth } from './dom.js?v=20261118-1029';
-import { fmtEuro, fmtInt } from './charts.js?v=20261118-1029';
-import { valuesOf, month, monthRange, orderCategories, EMPTY } from './model.js?v=20261118-1029';
+import { h, fmtDate, fmtMonth } from './dom.js?v=20261118-1056';
+import { fmtEuro, fmtInt } from './charts.js?v=20261118-1056';
+import { valuesOf, month, monthRange, orderCategories, EMPTY } from './model.js?v=20261118-1056';
 
 /** Agrège par valeur d'une dimension : nombre, montant, première date de début, dernière date de fin. */
 function aggregate(rows, dim, m) {

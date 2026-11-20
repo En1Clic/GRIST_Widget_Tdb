@@ -5,8 +5,8 @@
 // La fiche n'a aucun champ codé en dur : libellés, types, listes et ordre viennent du document.
 // Hors de Grist (ou avec ?demo), elle fonctionne sur le jeu de démonstration, sans rien écrire.
 
-import * as bridge from '../src/grist-bridge.js?v=20261118-1029';
-import { $, h } from '../src/dom.js?v=20261118-1029';
+import * as bridge from '../src/grist-bridge.js?v=20261118-1056';
+import { $, h } from '../src/dom.js?v=20261118-1056';
 
 const state = { view: 'accueil', table: null, fields: [], values: {}, live: false, saving: false, error: null, lastId: null, demoRows: [] };
 const LONG_TEXT = /desc|objectif|message|comment|detail|détail|note|contexte|résumé|resume/i;
@@ -42,7 +42,7 @@ async function loadGrist() {
 }
 
 async function loadDemo() {
-  const data = await (await fetch('../demo/actions-demo.json?v=20261118-1029')).json();
+  const data = await (await fetch('../demo/actions-demo.json?v=20261118-1056')).json();
   state.table = data.table;
   state.demoRows = data.rows;
   state.fields = data.columns.filter((c) => !/_EFF$|MANQUANTS/i.test(c.id)).map((c) => {
@@ -162,11 +162,31 @@ function input(f) {
         opts.map((o) => h('option', { value: o.value, selected: v != null && String(v) === String(o.value) }, o.label)));
     }
     case 'multi': {
+      // Menu compact : un bouton résume la sélection, la liste s'ouvre en surimpression.
       const sel = new Set(v || []);
-      return h('div', { class: 'chips', id }, f.options.map((o) => h('button', {
-        type: 'button', class: 'chip' + (sel.has(o.value) ? ' on' : ''), 'aria-pressed': sel.has(o.value) ? 'true' : 'false',
-        onclick: (e) => { sel.has(o.value) ? sel.delete(o.value) : sel.add(o.value); set([...sel]); e.currentTarget.classList.toggle('on'); },
-      }, o.label)), f.options.length ? '' : h('span', { class: 'muted' }, 'Aucune valeur proposée'));
+      const resume = () => (sel.size === 0 ? '— choisir —' : sel.size <= 2
+        ? f.options.filter((o) => sel.has(o.value)).map((o) => o.label).join(', ') : `${sel.size} sélectionnés`);
+      const btn = h('button', { type: 'button', class: 'msel' + (sel.size ? ' on' : ''), id, 'aria-haspopup': 'listbox' }, h('span', {}, resume()), ' ▾');
+      const pop = h('div', { class: 'mpop', hidden: true });
+      const list = h('div', { class: 'mlist' }, f.options.map((o) => h('label', { class: 'mitem' },
+        h('input', { type: 'checkbox', checked: sel.has(o.value), onchange: (e) => {
+          e.target.checked ? sel.add(o.value) : sel.delete(o.value); set([...sel]);
+          btn.firstChild.textContent = resume(); btn.classList.toggle('on', sel.size > 0);
+        } }), h('span', {}, o.label))));
+      if (f.options.length > 8) {
+        const q = h('input', { type: 'search', class: 'msearch', placeholder: 'Rechercher…', oninput: (e) => {
+          const s = e.target.value.toLowerCase();
+          list.querySelectorAll('.mitem').forEach((it) => { it.hidden = !it.textContent.toLowerCase().includes(s); });
+        } });
+        pop.append(q);
+      }
+      pop.append(f.options.length ? list : h('span', { class: 'muted' }, 'Aucune valeur proposée'));
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation(); const open = pop.hidden;
+        document.querySelectorAll('.mpop').forEach((x) => { x.hidden = true; }); pop.hidden = !open;
+      });
+      pop.addEventListener('click', (e) => e.stopPropagation());
+      return h('div', { class: 'mwrap' }, btn, pop);
     }
     case 'date': return h('input', { id, type: 'date', value: v || '', oninput: (e) => { set(e.target.value || null); checkDates(); } });
     case 'datetime': return h('input', { id, type: 'datetime-local', value: v || '', oninput: (e) => set(e.target.value || null) });
@@ -174,7 +194,7 @@ function input(f) {
     case 'bool': return h('label', { class: 'switch' }, h('input', { id, type: 'checkbox', checked: !!v, onchange: (e) => set(e.target.checked) }), h('span', {}, v ? 'Oui' : 'Non'));
     default: {
       const long = LONG_TEXT.test(f.id) || LONG_TEXT.test(f.label) || f.wo.wrap;
-      return long ? h('textarea', { id, rows: 3, oninput: (e) => set(e.target.value) }, v || '')
+      return long ? h('textarea', { id, rows: 2, oninput: (e) => set(e.target.value) }, v || '')
         : h('input', { id, type: 'text', value: v || '', oninput: (e) => set(e.target.value) });
     }
   }
@@ -213,19 +233,20 @@ function viewFiche() {
   const pair = datePair();
   const form = h('form', { class: 'sheetform', novalidate: true, onsubmit: (e) => { e.preventDefault(); submit(); } },
     h('div', { class: 'fgrid' }, state.fields.map((f) => {
-      const wide = f.kind === 'multi' || (f.kind === 'text' && (LONG_TEXT.test(f.id) || LONG_TEXT.test(f.label) || f.wo?.wrap));
+      const wide = f.kind === 'text' && (LONG_TEXT.test(f.id) || LONG_TEXT.test(f.label) || f.wo?.wrap);
       return h('div', { class: 'fld' + (wide ? ' wide' : ''), 'data-field': f.id },
         h('label', { for: 'f-' + f.id }, f.label, f.required ? h('span', { class: 'req' }, ' *') : ''),
         h('div', { class: 'ctl' }, input(f)));
     })),
     pair ? h('p', { id: 'datewarn', class: 'warn', hidden: true }, `« ${pair[1].label} » est antérieure à « ${pair[0].label} ».`) : '',
     state.error ? h('p', { class: 'err' }, state.error) : '',
-    h('div', { class: 'actions' },
+    h('div', { class: 'actions sticky' },
+      h('span', { class: 'muted hintreq' }, 'Les champs marqués * sont obligatoires.'),
       h('button', { type: 'button', class: 'ghost', onclick: () => go('accueil') }, 'Annuler'),
       h('button', { type: 'submit', class: 'cta', disabled: state.saving }, state.saving ? 'Enregistrement…' : 'Valider la fiche')));
   return h('section', { class: 'fiche' },
     h('div', { class: 'fhead' }, h('button', { class: 'back', onclick: () => go('accueil') }, '← Accueil'),
-      h('div', {}, h('h1', {}, 'Nouvelle action'), h('p', { class: 'lede' }, `Table « ${state.table} » · les champs marqués * sont obligatoires.`))),
+      h('h1', {}, 'Nouvelle action'), h('span', { class: 'muted' }, `table « ${state.table} »`)),
     form);
 }
 
@@ -285,5 +306,7 @@ function render() {
   $('#app').replaceChildren(top, h('main', {}, body));
   if (state.view === 'fiche') checkDates();
 }
+
+document.addEventListener('click', () => document.querySelectorAll('.mpop').forEach((x) => { x.hidden = true; }));
 
 boot();
